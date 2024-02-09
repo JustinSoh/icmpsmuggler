@@ -6,7 +6,7 @@ from scapy.all import sniff
 
 def packet_handler(packet):
     if packet.haslayer('ICMP'):
-        print("Received packetttt:", packet.payload)
+        print("Received packet:", packet.payload)
         # Do something with the packet
 
 def main(): 

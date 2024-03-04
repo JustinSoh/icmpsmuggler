@@ -4,6 +4,9 @@ import binascii
 import argparse
 from scapy.all import Ether, IP, ICMP, sr1, Raw
 
+STARTING_SEQ = "##@@!!"
+ENDING_SEQ = "!!@@##"
+
 def encodeData(input, type="b64"):
     encodedInput = str.encode(input)
     if type == "b64":
@@ -46,10 +49,13 @@ def main():
     # intialise parser and extract out info
     parser = initialiseParser()
     args = parser.parse_args()
-
+    args.payload = args.payload
+    
+    sendPayload(args.src, args.dst, encodeData(STARTING_SEQ, args.enc))
     if args.type == "staggered":
         if not args.chunks: 
             parser.error("--interval is required when --type is set to staggered")
+        
         
         encodedPayload = encodeData(args.payload, args.enc)
         splittedPayloads = splitPayload(encodedPayload, args.chunks)
@@ -60,6 +66,10 @@ def main():
     if args.type == "lump":
         encodedPayload = encodeData(args.payload, args.enc)
         sendPayload(args.src, args.dst, encodedPayload)
+        
+    sendPayload(args.src, args.dst, encodeData(ENDING_SEQ, args.enc))
+    
 
 if __name__ == "__main__":
     main()
+

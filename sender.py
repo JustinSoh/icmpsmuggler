@@ -2,24 +2,82 @@ import sys
 import base64
 import binascii
 import argparse
-from scapy.all import Ether, IP, ICMP, sr1, Raw
+import threading
+from scapy.all import sniff, IP, ICMP, sr1, Raw, sr
 
-STARTING_SEQ = "##@@!!"
-ENDING_SEQ = "!!@@##"
+SENDING_START_SEQ = "##@@!!"
+SENDING_END_SEQ = "!!@@##"
+RECEIVING_START_SEQ = b'IyMjIyMj'
+RECEIVING_END_SEQ = b'ISEhISEh'
 
-def encodeData(input, type="b64"):
+SESSION_BYTE = b''
+SESSION_START = False
+RECEIVING = True
+
+BASE64_ENCODING = "b64"
+HEX_ENCODING = "hex"
+
+ICMP_REPLY_CODE = 0
+
+def encodeData(input, type=BASE64_ENCODING):
     encodedInput = str.encode(input)
-    if type == "b64":
+    
+    if type == BASE64_ENCODING:
         return base64.b64encode(encodedInput)
     
-    if type == "hex": 
+    if type == HEX_ENCODING: 
         return binascii.hexlify(encodedInput)
-    
-def sendPayload(src, dst , payload):
-    p = sr1(IP(dst=dst , src=src)/ ICMP() / (payload))
-    if p: 
-        p.show()
 
+def decodeData(input):
+    decoded = base64.b64decode(input)
+    return decoded
+
+def receivePayload(packet):
+    if packet.haslayer('ICMP') and packet['ICMP'].type == ICMP_REPLY_CODE:
+        global SESSION_START
+        global SESSION_BYTE
+        global RECEIVING
+        
+        if RECEIVING_START_SEQ in packet.load:
+            print
+            SESSION_START = True
+            SESSION_BYTE = b''
+
+        elif RECEIVING_END_SEQ in packet.load:
+            SESSION_START = False
+            SESSION_BYTE = decodeData(SESSION_BYTE)
+            # reassemble here 
+            RECEIVING = False
+            
+        else: 
+            SESSION_BYTE += packet.load
+        
+
+def stopfilter(x): 
+    global RECEIVING
+    
+    if not RECEIVING:
+        return True
+    else: 
+        return False
+        
+def sendStaggeredPayload(args):
+    encodedPayload = encodeData(args.payload, args.enc)
+    splittedPayloads = splitPayload(encodedPayload, args.chunks)
+        
+    for i in splittedPayloads: 
+        sendPayload(args.src, args.dst, i)
+
+def sendLumpPayload(args):
+    encodedPayload = encodeData(args.payload, args.enc)
+    sendPayload(args.src, args.dst, encodedPayload)
+
+def sendPayload(src, dst , payload):
+    packet = IP(dst=dst, src=src) / ICMP() / payload
+    # Send the packet and wait for responses
+    sr1(packet)
+   
+    
 def splitPayload(encodedPayload, chunks):
     # if the chunks > size of the encoded payload
     if int(chunks) > len(encodedPayload):
@@ -44,30 +102,45 @@ def initialiseParser():
     parser.add_argument('-e', '--enc', default='b64') # to implement more then one form of encoding
     return parser
 
+def send_commands(parser):
+    args = parser.parse_args()
+    args.payload = args.payload
+    
+    sendPayload(args.src, args.dst, encodeData(SENDING_START_SEQ, args.enc))
+    
+    if args.type == "staggered":
+        if not args.chunks: 
+            parser.error("--interval is required when --type is set to staggered")
+            sys.exit(1)
+        sendStaggeredPayload(args)
+       
+    elif args.type == "lump":
+        sendLumpPayload(args)    
+            
+    sendPayload(args.src, args.dst, encodeData(SENDING_END_SEQ, args.enc))
+    
+
+def start_receiver(): 
+    global RECEIVING
+    global SESSION_BYTE
+    p = sniff(filter='icmp', prn=receivePayload, store=0 , iface='bridge100', stop_filter=stopfilter)
+    print(f"receive payload {SESSION_BYTE}")
+
 def main(): 
     
     # intialise parser and extract out info
     parser = initialiseParser()
-    args = parser.parse_args()
-    args.payload = args.payload
     
-    sendPayload(args.src, args.dst, encodeData(STARTING_SEQ, args.enc))
-    if args.type == "staggered":
-        if not args.chunks: 
-            parser.error("--interval is required when --type is set to staggered")
-        
-        
-        encodedPayload = encodeData(args.payload, args.enc)
-        splittedPayloads = splitPayload(encodedPayload, args.chunks)
-        
-        for i in splittedPayloads: 
-            sendPayload(args.src, args.dst, i)
-   
-    if args.type == "lump":
-        encodedPayload = encodeData(args.payload, args.enc)
-        sendPayload(args.src, args.dst, encodedPayload)
-        
-    sendPayload(args.src, args.dst, encodeData(ENDING_SEQ, args.enc))
+    sending_thread = threading.Thread(target=send_commands, args=(parser,))
+    sending_thread.start()
+    
+    receiver_thread = threading.Thread(target=start_receiver)
+    receiver_thread.start()
+    
+    receiver_thread.join()
+    sending_thread.join()
+    
+    sys.exit()
     
 
 if __name__ == "__main__":

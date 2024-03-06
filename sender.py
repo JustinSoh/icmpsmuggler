@@ -14,14 +14,13 @@ SESSION_START = False
 RECEIVING = True
 
 ICMP_REPLY_CODE = 0
-OUTPUT_DIRECTORY = 'out/'
 
 def reassemble_file(data, filename):
     try:
-        with open(OUTPUT_DIRECTORY + filename, 'wb') as f: 
+        with open(filename, 'wb') as f: 
             f.write(data)
             f.close
-            print(f'file retrieved and written into {OUTPUT_DIRECTORY}{filename}')
+            print(f'file retrieved and written into {filename}')
     except Exception as e:
         print(e) 
         

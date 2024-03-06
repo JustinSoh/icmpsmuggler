@@ -24,7 +24,7 @@ def decodeData(input):
 def sendPayload(src, dst , payload):
     packet = IP(dst=dst, src=src) / ICMP() / payload
     # Send the packet and wait for responses
-    sr1(packet)
+    sr1(packet, verbose=False)
     
     
 def splitPayload(encodedPayload, chunks):

@@ -14,22 +14,37 @@ SESSION_START = False
 RECEIVING = True
 
 ICMP_REPLY_CODE = 0
+OUTPUT_DIRECTORY = 'out/'
 
+def reassemble_file(data, filename):
+    try:
+        with open(OUTPUT_DIRECTORY + filename, 'wb') as f: 
+            f.write(data)
+            f.close
+            print(f'file retrieved and written into {OUTPUT_DIRECTORY}{filename}')
+    except Exception as e:
+        print(e) 
+        
 def receivePayload(packet):
+    global COMMAND
+    global DESCRIPTION
     if packet.haslayer('ICMP') and packet['ICMP'].type == ICMP_REPLY_CODE:
         global SESSION_START
         global SESSION_BYTE
         global RECEIVING
         
         if RECEIVING_START_SEQ in packet.load:
-            print
             SESSION_START = True
             SESSION_BYTE = b''
 
         elif RECEIVING_END_SEQ in packet.load:
             SESSION_START = False
-            SESSION_BYTE = helper.decodeData(SESSION_BYTE)
-            # reassemble here 
+            # SESSION_BYTE = helper.decodeData(SESSION_BYTE)
+            if COMMAND == 'get':
+                if SESSION_BYTE == b'file not found':
+                    print(f'{DESCRIPTION} file is not found')
+                else:
+                    reassemble_file(SESSION_BYTE, DESCRIPTION)
             RECEIVING = False
             
         else: 
@@ -74,7 +89,6 @@ def initialiseParser():
 def send_commands(parser):
     args = parser.parse_args()
     args.payload = args.payload
-    
     # send starting sequence
     helper.sendPayload(args.src, args.dst, helper.encodeData(SENDING_START_SEQ, args.enc))
     
@@ -97,12 +111,17 @@ def start_receiver(parser):
     args = parser.parse_args()
     interface = args.interface
     p = sniff(filter='icmp', prn=receivePayload, store=0 , iface=interface, stop_filter=stopfilter)
-    print(f"receive payload {SESSION_BYTE}")
 
 def main(): 
     
+    global COMMAND
+    global DESCRIPTION
+    
     # intialise parser and extract out info
     parser = initialiseParser()
+    args = parser.parse_args()
+    COMMAND, DESCRIPTION = args.payload.split(" ")
+    
     
     sending_thread = threading.Thread(target=send_commands, args=(parser,))
     sending_thread.start()

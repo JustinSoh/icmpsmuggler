@@ -15,7 +15,6 @@ session_byte = b''
 ICMP_REPLY_CODE = 0
 
 TEST_COMMAND = b'get'
-TEST_REPLY = 'mamamamama'
 
 REPLY_CHUNKS = '1' # how many chunks it takes for the file to send across
 

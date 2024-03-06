@@ -93,7 +93,7 @@ def initialiseParser():
         prog="ICMPSmuggler",
         description="Smuggling data through ICMP"
     )
-    
+    parser.add_argument('-i', '--interface', required=True) # to implement more then one form of encoding
     parser.add_argument('-s', '--src', required=True)
     parser.add_argument('-d', '--dst', required=True)
     parser.add_argument('-p', '--payload', required=True)
@@ -120,10 +120,12 @@ def send_commands(parser):
     sendPayload(args.src, args.dst, encodeData(SENDING_END_SEQ, args.enc))
     
 
-def start_receiver(): 
+def start_receiver(parser): 
     global RECEIVING
     global SESSION_BYTE
-    p = sniff(filter='icmp', prn=receivePayload, store=0 , iface='bridge100', stop_filter=stopfilter)
+    args = parser.parse_args()
+    interface = args.interface
+    p = sniff(filter='icmp', prn=receivePayload, store=0 , iface=interface, stop_filter=stopfilter)
     print(f"receive payload {SESSION_BYTE}")
 
 def main(): 
@@ -134,7 +136,7 @@ def main():
     sending_thread = threading.Thread(target=send_commands, args=(parser,))
     sending_thread.start()
     
-    receiver_thread = threading.Thread(target=start_receiver)
+    receiver_thread = threading.Thread(target=start_receiver, args=(parser,))
     receiver_thread.start()
     
     receiver_thread.join()

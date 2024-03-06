@@ -1,8 +1,7 @@
 import sys
-import base64
-import binascii
 import argparse
 import threading
+import helper
 from scapy.all import sniff, IP, ICMP, sr1, Raw, sr
 
 SENDING_START_SEQ = "##@@!!"
@@ -14,23 +13,7 @@ SESSION_BYTE = b''
 SESSION_START = False
 RECEIVING = True
 
-BASE64_ENCODING = "b64"
-HEX_ENCODING = "hex"
-
 ICMP_REPLY_CODE = 0
-
-def encodeData(input, type=BASE64_ENCODING):
-    encodedInput = str.encode(input)
-    
-    if type == BASE64_ENCODING:
-        return base64.b64encode(encodedInput)
-    
-    if type == HEX_ENCODING: 
-        return binascii.hexlify(encodedInput)
-
-def decodeData(input):
-    decoded = base64.b64decode(input)
-    return decoded
 
 def receivePayload(packet):
     if packet.haslayer('ICMP') and packet['ICMP'].type == ICMP_REPLY_CODE:
@@ -45,7 +28,7 @@ def receivePayload(packet):
 
         elif RECEIVING_END_SEQ in packet.load:
             SESSION_START = False
-            SESSION_BYTE = decodeData(SESSION_BYTE)
+            SESSION_BYTE = helper.decodeData(SESSION_BYTE)
             # reassemble here 
             RECEIVING = False
             
@@ -62,31 +45,17 @@ def stopfilter(x):
         return False
         
 def sendStaggeredPayload(args):
-    encodedPayload = encodeData(args.payload, args.enc)
-    splittedPayloads = splitPayload(encodedPayload, args.chunks)
+    encodedPayload = helper.encodeData(args.payload, args.enc)
+    splittedPayloads = helper.splitPayload(encodedPayload, args.chunks)
         
     for i in splittedPayloads: 
-        sendPayload(args.src, args.dst, i)
+        helper.sendPayload(args.src, args.dst, i)
 
 def sendLumpPayload(args):
-    encodedPayload = encodeData(args.payload, args.enc)
-    sendPayload(args.src, args.dst, encodedPayload)
+    encodedPayload = helper.encodeData(args.payload, args.enc)
+    helper.sendPayload(args.src, args.dst, encodedPayload)
 
-def sendPayload(src, dst , payload):
-    packet = IP(dst=dst, src=src) / ICMP() / payload
-    # Send the packet and wait for responses
-    sr1(packet)
-   
     
-def splitPayload(encodedPayload, chunks):
-    # if the chunks > size of the encoded payload
-    if int(chunks) > len(encodedPayload):
-        chunks = 1
-    sizePerChunk = len(encodedPayload) // int(chunks)  # Use integer division to avoid float division
-    payloads = []
-    for i in range(0, len(encodedPayload), sizePerChunk):  # Iterate over the payload with step equal to sizePerChunk
-        payloads.append(encodedPayload[i:i+sizePerChunk])  # Append each chunk to the payloads list
-    return payloads
 
 def initialiseParser():
     parser = argparse.ArgumentParser(
@@ -106,7 +75,8 @@ def send_commands(parser):
     args = parser.parse_args()
     args.payload = args.payload
     
-    sendPayload(args.src, args.dst, encodeData(SENDING_START_SEQ, args.enc))
+    # send starting sequence
+    helper.sendPayload(args.src, args.dst, helper.encodeData(SENDING_START_SEQ, args.enc))
     
     if args.type == "staggered":
         if not args.chunks: 
@@ -116,8 +86,9 @@ def send_commands(parser):
        
     elif args.type == "lump":
         sendLumpPayload(args)    
-            
-    sendPayload(args.src, args.dst, encodeData(SENDING_END_SEQ, args.enc))
+    
+    # send ending sequence      
+    helper.sendPayload(args.src, args.dst, helper.encodeData(SENDING_END_SEQ, args.enc))
     
 
 def start_receiver(parser): 
